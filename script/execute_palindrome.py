@@ -7,6 +7,7 @@ import argparse
 import sqlite3
 import sys
 import re
+import time
 from pathlib import Path
 from collections import deque
 
@@ -15,11 +16,13 @@ from palindrome_engine import (
 )
 
 DEFAULT_DB_PATH = Path(__file__).parent / "bunsetsu.db"
-MAX_SEEDS = 200
+# 200 -> 18.56s, 500 -> 19.06s, 1000-> 19.04s
+MAX_SEEDS = 500
 
 # 表示文字列に日本語（ひらがな・カタカナ・漢字・長音符）以外が含まれるものを除外
 _JP_RE = re.compile(r'^[ぁ-んァ-ヶー\u4E00-\u9FFF々〇]+$')
-CANDIDATE_LIMIT = 500
+# 5000 -> 53s, 2000 -> 18.56s
+CANDIDATE_LIMIT = 2000
 MAX_BUNSETSU = 8
 MAX_RESULTS = 50
 
@@ -152,6 +155,7 @@ def main():
 
             print(f"  {len(seeds)} 件の語彙にマッチ。回文を探索中...")
 
+            t0 = time.perf_counter()
             all_results = []
             seen_h = set()
             for seed_kana, seed_display in seeds:
@@ -161,11 +165,12 @@ def main():
                         all_results.append(state)
                 if len(all_results) >= MAX_RESULTS:
                     break
+            elapsed = time.perf_counter() - t0
 
             if not all_results:
-                print("  回文が見つかりませんでした。")
+                print(f"  回文が見つかりませんでした。（{elapsed:.2f}秒）")
             else:
-                print(f"\n  {len(all_results)} 件の回文が見つかりました:\n")
+                print(f"\n  {len(all_results)} 件の回文が見つかりました（{elapsed:.2f}秒）:\n")
                 for i, state in enumerate(all_results, 1):
                     print(f"    {i:2d}. {state.display}（{state.H}）")
 
