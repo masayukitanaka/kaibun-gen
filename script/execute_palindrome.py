@@ -3,6 +3,7 @@
 bunsetsu.db + palindrome_engine を使ってキーワードから回文を探す
 """
 
+import argparse
 import sqlite3
 import sys
 import re
@@ -13,7 +14,7 @@ from palindrome_engine import (
     generate_initial_states, extend_left, extend_right,
 )
 
-DB_PATH = Path(__file__).parent / "bunsetsu.db"
+DEFAULT_DB_PATH = Path(__file__).parent / "bunsetsu.db"
 MAX_SEEDS = 200
 
 # 表示文字列に日本語（ひらがな・カタカナ・漢字・長音符）以外が含まれるものを除外
@@ -119,11 +120,17 @@ def search(cur, seed_kana, seed_display, max_bunsetsu=MAX_BUNSETSU, max_results=
 
 
 def main():
-    if not DB_PATH.exists():
-        print(f"エラー: {DB_PATH} が見つかりません。先に build_db.py を実行してください。")
+    parser = argparse.ArgumentParser(description="回文検索エンジン")
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH,
+                        help=f"bunsetsu.db のパス（デフォルト: {DEFAULT_DB_PATH}）")
+    args = parser.parse_args()
+    db_path = args.db
+
+    if not db_path.exists():
+        print(f"エラー: {db_path} が見つかりません。先に build_db.py を実行してください。")
         sys.exit(1)
 
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
 
     print("=" * 50)
