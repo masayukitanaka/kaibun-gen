@@ -19,7 +19,7 @@ MAX_SEEDS = 200
 # 表示文字列に日本語（ひらがな・カタカナ・漢字・長音符）以外が含まれるものを除外
 _JP_RE = re.compile(r'^[ぁ-んァ-ヶー\u4E00-\u9FFF々〇]+$')
 CANDIDATE_LIMIT = 500
-MAX_BUNSETSU = 5
+MAX_BUNSETSU = 8
 MAX_RESULTS = 50
 
 
