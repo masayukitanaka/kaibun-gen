@@ -23,10 +23,13 @@ MAX_SEEDS = 200
 _JP_RE = re.compile(r'^[ぁ-んァ-ヶー\u4E00-\u9FFF々〇]+$')
 # 5000 -> 53s, 2000 -> 18.56s
 CANDIDATE_LIMIT = 1000
-MIN_BUNSETSU = 3
+MIN_BUNSETSU = 2
 MAX_BUNSETSU = 4
 MAX_RESULTS = 5000
 DEFICIT_THRESHOLD = 2  # この長さ以下の不足文字列は事前計算テーブルを使う
+
+# display にこれらの語を含む結果を除外する
+EXCLUDE_WORDS = ["悔過"]
 
 
 def prefix_range(prefix):
@@ -246,7 +249,8 @@ def main():
                     for state in search_at_depth(cur, seed_kana, seed_display,
                                                  target_depth=depth,
                                                  use_tables=use_tables):
-                        if state.H not in seen_h and _JP_RE.match(state.display):
+                        if state.H not in seen_h and _JP_RE.match(state.display) \
+                                and not any(w in state.display for w in EXCLUDE_WORDS):
                             seen_h.add(state.H)
                             depth_results.append(state)
                 dt_elapsed = time.perf_counter() - dt0
