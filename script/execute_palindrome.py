@@ -12,11 +12,8 @@ from pathlib import Path
 from collections import deque
 
 from palindrome_engine import (
-    State, generate_initial_states, extend_left, extend_right,
+    generate_initial_states, extend_left, extend_right,
 )
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from database import ensure_table
 
 DEFAULT_DB_PATH = Path(__file__).parent / "bunsetsu.db"
 # 200 -> 18.56s, 500 -> 19.06s, 1000-> 19.04s
@@ -196,37 +193,6 @@ def search_at_depth(cur, seed_kana, seed_display, target_depth,
     return results
 
 
-def load_cache(cur, seed_kana, target_depth):
-    """キャッシュからヒットする結果を返す。キャッシュがなければ None"""
-    row = cur.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='palindrome_cache'"
-    ).fetchone()
-    if row[0] == 0:
-        return None
-    rows = cur.execute(
-        "SELECT kana, display, bunsetsu_count FROM palindrome_cache "
-        "WHERE seed_kana = ? AND target_depth = ?",
-        (seed_kana, target_depth),
-    ).fetchall()
-    return rows if rows else None
-
-
-def save_cache(conn, cur, seed_kana, seed_display, target_depth, results):
-    """探索結果を全件キャッシュに保存する"""
-    ensure_table(conn, "palindrome_cache")
-    batch = [
-        (seed_kana, seed_display, target_depth, s.H, s.display, s.bunsetsu_count)
-        for s in results
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO palindrome_cache"
-        "(seed_kana, seed_display, target_depth, kana, display, bunsetsu_count) "
-        "VALUES(?,?,?,?,?,?)",
-        batch,
-    )
-    conn.commit()
-
-
 def main():
     parser = argparse.ArgumentParser(description="回文検索エンジン")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH,
@@ -280,21 +246,9 @@ def main():
                 print(f"  -- depth={depth} seeds={len(depth_seeds)} 開始", flush=True)
                 depth_results = []
                 for seed_kana, seed_display in depth_seeds:
-                    cached = load_cache(cur, seed_kana, depth)
-                    if cached is not None:
-                        for kana, display, bc in cached:
-                            if kana not in seen_h and _JP_RE.match(display) \
-                                    and not any(w in display for w in EXCLUDE_WORDS):
-                                seen_h.add(kana)
-                                depth_results.append(
-                                    State(L="", H=kana, R="",
-                                          display=display, bunsetsu_count=bc))
-                        continue
-                    search_results = search_at_depth(cur, seed_kana, seed_display,
-                                                     target_depth=depth,
-                                                     use_tables=use_tables)
-                    save_cache(conn, cur, seed_kana, seed_display, depth, search_results)
-                    for state in search_results:
+                    for state in search_at_depth(cur, seed_kana, seed_display,
+                                                 target_depth=depth,
+                                                 use_tables=use_tables):
                         if state.H not in seen_h and _JP_RE.match(state.display) \
                                 and not any(w in state.display for w in EXCLUDE_WORDS):
                             seen_h.add(state.H)
