@@ -12,6 +12,7 @@ jumanpp.dic フォーマット（CSV）:
 """
 
 import sqlite3
+import sys
 import re
 from pathlib import Path
 
@@ -375,27 +376,16 @@ def build_sqlite(bunsetsu_list, db_path):
     print(f"  SQLiteに書き込み中: {db_path}")
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    cur.executescript("""
-        DROP TABLE IF EXISTS bunsetsu;
-        CREATE TABLE bunsetsu (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            kana     TEXT NOT NULL,
-            kana_rev TEXT NOT NULL,
-            display  TEXT NOT NULL,
-            type     TEXT,
-            freq     INTEGER DEFAULT 1
-        );
-    """)
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from database import apply_table
+    apply_table(conn, "bunsetsu")
+
     rows = [(k, k[::-1], d, t, 1) for k, d, t in bunsetsu_list]
     cur.executemany(
         "INSERT INTO bunsetsu (kana, kana_rev, display, type, freq) VALUES (?,?,?,?,?)",
         rows
     )
-    cur.executescript("""
-        CREATE INDEX IF NOT EXISTS idx_kana     ON bunsetsu(kana);
-        CREATE INDEX IF NOT EXISTS idx_kana_rev ON bunsetsu(kana_rev);
-        CREATE INDEX IF NOT EXISTS idx_display  ON bunsetsu(display);
-    """)
     conn.commit()
 
     total = cur.execute("SELECT COUNT(*) FROM bunsetsu").fetchone()[0]
