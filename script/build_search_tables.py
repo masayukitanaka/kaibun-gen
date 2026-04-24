@@ -25,19 +25,11 @@ def prefix_range(prefix):
 
 # ── extend_candidates 構築 ───────────────────────────────
 
-def build_extend_candidates(cur):
+def build_extend_candidates(conn, cur):
     """case 2 の遷移を全文節から列挙し extend_candidates に格納する"""
-    cur.execute("DROP TABLE IF EXISTS extend_candidates")
-    cur.execute("""
-        CREATE TABLE extend_candidates (
-            deficit     TEXT NOT NULL,
-            side        TEXT NOT NULL,
-            w_kana      TEXT NOT NULL,
-            w_display   TEXT NOT NULL,
-            new_deficit TEXT NOT NULL,
-            new_side    TEXT NOT NULL
-        )
-    """)
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from database import apply_table, apply_indexes
+    apply_table(conn, "extend_candidates", skip_indexes=True)
 
     all_bunsetsu = cur.execute("SELECT kana, display FROM bunsetsu").fetchall()
     total = len(all_bunsetsu)
@@ -61,7 +53,7 @@ def build_extend_candidates(cur):
 
         if len(batch) >= 80_000:
             cur.executemany(
-                "INSERT INTO extend_candidates VALUES(?,?,?,?,?,?)", batch
+                "INSERT INTO extend_candidates(deficit,side,w_kana,w_display,new_deficit,new_side) VALUES(?,?,?,?,?,?)", batch
             )
             batch.clear()
 
@@ -70,15 +62,10 @@ def build_extend_candidates(cur):
 
     if batch:
         cur.executemany(
-            "INSERT INTO extend_candidates VALUES(?,?,?,?,?,?)", batch
+            "INSERT INTO extend_candidates(deficit,side,w_kana,w_display,new_deficit,new_side) VALUES(?,?,?,?,?,?)", batch
         )
 
-    cur.execute(
-        "CREATE INDEX idx_ec_lookup ON extend_candidates(deficit, side)"
-    )
-    cur.execute(
-        "CREATE INDEX idx_ec_newdef ON extend_candidates(new_deficit, new_side)"
-    )
+    apply_indexes(conn, "extend_candidates")
 
     cnt = cur.execute("SELECT COUNT(*) FROM extend_candidates").fetchone()[0]
     print(f"  extend_candidates: {cnt:,} 行")
@@ -86,17 +73,10 @@ def build_extend_candidates(cur):
 
 # ── reachable 構築 ───────────────────────────────────────
 
-def build_reachable(cur):
+def build_reachable(conn, cur):
     """不足文字列の到達可能性を BFS で計算し reachable に格納する"""
-    cur.execute("DROP TABLE IF EXISTS reachable")
-    cur.execute("""
-        CREATE TABLE reachable (
-            deficit   TEXT NOT NULL,
-            side      TEXT NOT NULL,
-            min_steps INTEGER NOT NULL,
-            PRIMARY KEY (deficit, side)
-        )
-    """)
+    from database import apply_table
+    apply_table(conn, "reachable", skip_indexes=True)
 
     # ── 到達可能な不足文字列を収集していく ──
     reachable: dict[tuple[str, str], int] = {}
@@ -242,7 +222,9 @@ def build_reachable(cur):
     # ── DB に書き込み ──
     batch = [(d, s, steps) for (d, s), steps in reachable.items()]
     cur.executemany("INSERT OR IGNORE INTO reachable VALUES(?,?,?)", batch)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_reach ON reachable(deficit, side)")
+
+    from database import apply_indexes
+    apply_indexes(conn, "reachable")
 
     cnt = cur.execute("SELECT COUNT(*) FROM reachable").fetchone()[0]
     print(f"  reachable: {cnt:,} 行")
@@ -274,17 +256,15 @@ def main():
     t0 = time.perf_counter()
 
     print("1/3  extend_candidates を構築中...")
-    build_extend_candidates(cur)
+    build_extend_candidates(conn, cur)
     conn.commit()
 
     print("2/3  reachable を構築中...")
-    build_reachable(cur)
+    build_reachable(conn, cur)
     conn.commit()
 
-    print("3/3  extend_candidates に reach_steps を付与し到達不能行を削除中...")
+    print("3/3  extend_candidates の reach_steps を更新し到達不能行を削除中...")
     before = cur.execute("SELECT COUNT(*) FROM extend_candidates").fetchone()[0]
-    # reach_steps 列を追加: new_deficit の到達に必要な最小ステップ数
-    cur.execute("ALTER TABLE extend_candidates ADD COLUMN reach_steps INTEGER")
     cur.execute("UPDATE extend_candidates SET reach_steps = 0 WHERE new_deficit = ''")
     cur.execute(
         "UPDATE extend_candidates SET reach_steps = ("
@@ -297,11 +277,6 @@ def main():
     cur.execute("DELETE FROM extend_candidates WHERE reach_steps IS NULL")
     after = cur.execute("SELECT COUNT(*) FROM extend_candidates").fetchone()[0]
     print(f"  {before:,} → {after:,} 行 ({before - after:,} 行削除)")
-    # reach_steps でフィルタできるよう複合インデックスを再構築
-    cur.execute("DROP INDEX IF EXISTS idx_ec_lookup")
-    cur.execute(
-        "CREATE INDEX idx_ec_lookup ON extend_candidates(deficit, side, reach_steps)"
-    )
     conn.commit()
     conn.execute("VACUUM")
 
